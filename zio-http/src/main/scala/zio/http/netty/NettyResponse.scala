@@ -37,7 +37,7 @@ object NettyResponse {
     val copiedBuffer = Unpooled.copiedBuffer(jRes.content())
     val data         = NettyBody.fromByteBuf(copiedBuffer, headers.header(Header.ContentType))
 
-    new NativeResponse(data, headers, status, () => NettyFutureExecutor.executed(ctx.close()))
+    new NativeResponse(Response(status, headers, data), () => NettyFutureExecutor.executed(ctx.close()))
   }
 
   final def make(
@@ -49,7 +49,7 @@ object NettyResponse {
   )(implicit
     unsafe: Unsafe,
     trace: Trace,
-  ): ZIO[Any, Nothing, Response] = {
+  ): ZIO[Any, Nothing, NativeResponse] = {
     val status  = Conversions.statusFromNetty(jRes.status())
     val headers = Conversions.headersFromNetty(jRes.headers())
 
@@ -57,7 +57,7 @@ object NettyResponse {
       onComplete
         .succeed(ChannelState.forStatus(status))
         .as(
-          new NativeResponse(Body.empty, headers, status, () => NettyFutureExecutor.executed(ctx.close())),
+          new NativeResponse(Response(status, headers, Body.empty), () => NettyFutureExecutor.executed(ctx.close())),
         )
     } else {
       val responseHandler = new ClientResponseStreamHandler(zExec, onComplete, keepAlive, status)
@@ -72,7 +72,7 @@ object NettyResponse {
       val data = NettyBody.fromAsync { callback =>
         responseHandler.connect(callback)
       }
-      ZIO.succeed(new NativeResponse(data, headers, status, () => NettyFutureExecutor.executed(ctx.close())))
+      ZIO.succeed(new NativeResponse(Response(status, headers, data), () => NettyFutureExecutor.executed(ctx.close())))
     }
   }
 }

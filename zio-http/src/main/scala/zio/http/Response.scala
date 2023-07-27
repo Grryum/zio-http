@@ -24,13 +24,13 @@ import zio.stream.ZStream
 import java.nio.file.{AccessDeniedException, NotDirectoryException}
 import scala.annotation.tailrec
 
-final case class Response(
+case class Response(
   status: Status,
   headers: Headers,
   body: Body,
   socketApp: Option[SocketApp[Any]],
   frozen: Boolean,
-) extends HeaderOps[Response] {
+) extends HeaderOps[Response] { self =>
   def addCookie(cookie: Cookie.Response): Response =
     copy(headers = headers ++ Headers(Header.SetCookie(cookie)))
 
@@ -41,8 +41,18 @@ final case class Response(
   override def updateHeaders(update: Headers => Headers): Response =
     copy(headers = update(headers))
 
-  final def status(status: Status): Response =
-    copy(status = status)
+  def status(status: Status): Response = copy(status = status)
+
+  def freeze: Response = copy(frozen = true)
+
+  def patch(p: Response.Patch): Response = p.apply(self)
+
+  def httpError: Option[HttpError] = None // TODO: refactor to more elegant way
+
+  def isWebSocket: Boolean = socketApp match {
+    case Some(_) => status == Status.SwitchingProtocols
+    case _       => false
+  }
 
   //  /**
   //   * Collects the potentially streaming body of the response into a single
@@ -56,7 +66,6 @@ final case class Response(
   //      }
   //
 }
-
 
 object Response {
 
@@ -195,7 +204,9 @@ object Response {
   }
 
   def fromHttpError(error: HttpError): Response =
-    Response(error.status, Headers.empty, Body.fromString(error.message))
+    new Response(error.status, Headers.empty, Body.fromString(error.message), None, false) {
+      override def httpError: Option[HttpError] = Some(error)
+    }
 
   /**
    * Creates a response with content-type set to text/event-stream
